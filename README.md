@@ -1,6 +1,6 @@
 # How it works
 
-If consumer dies, it will try to process all it`s pending messaged on restart.
+If consumer dies, it will try to process all it`s pending messages on restart.
 
 If some messages were not consumed by workers (all workers were dead, for example),
 after first worker starts, it will consume all these messages.
