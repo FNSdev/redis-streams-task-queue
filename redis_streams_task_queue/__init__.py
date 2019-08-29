@@ -8,6 +8,6 @@ logging.config.dictConfig(LOGGING)
 
 __all__ = [
     'exceptions',
-    'task_queue',
+    'queue.py',
     'worker'
 ]

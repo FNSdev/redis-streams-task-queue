@@ -11,7 +11,7 @@ from redis_streams_task_queue.exceptions import TaskDoesNotExistException
 logger = logging.getLogger(__name__)
 
 
-class TaskQueue:
+class Queue:
     def __init__(self, redis_address, stream_key='tasks', consumer_group_name='consumers'):
         self._client = None
         self._redis_address = redis_address
@@ -27,38 +27,6 @@ class TaskQueue:
 
     def disconnect(self):
         self._client.close()
-
-    def task(self, func):
-        self._tasks[func.__name__] = func
-
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            message = self._serialize_task(func, *args, **kwargs)
-            await self._send_message(message)
-
-            logger.debug('Sending message "%s"' % message)
-
-        return wrapper
-
-    def _serialize_task(self, task, *args, **kwargs):
-        return json.dumps(
-            {
-                'task': task.__name__,
-                'args': args,
-                'kwargs': kwargs
-            }
-        )
-
-    def _deserialize_task(self, task):
-        task = json.loads(task)
-
-        task_name = task['task']
-        args = task['args']
-        kwargs = task['kwargs']
-
-        if task_name not in self._tasks:
-            raise TaskDoesNotExistException(f'Task with name "{task_name}" is not registered')
-        return self._tasks[task_name], args, kwargs
 
     async def _create_consumer_group(self):
         try:
@@ -81,5 +49,8 @@ class TaskQueue:
             else:
                 raise e
 
-    async def _send_message(self, message):
+    async def send_message(self, message):
         await self._client.xadd(self._stream_key, {'message': message})
+
+    def __str__(self):
+        return f'{self._stream_key}-{hash(self)}'

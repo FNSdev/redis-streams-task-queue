@@ -11,7 +11,7 @@ logger.debug('PID: %s' % os.getpid())
 
 # TODO do something with results (store them in redis, for example)
 class Worker:
-    def __init__(self, redis_address, queue, consumer_name):
+    def __init__(self, redis_address, queue, task_library, consumer_name):
         self._stop = False
 
         def on_stop(sig, frame):
@@ -22,6 +22,7 @@ class Worker:
         self._client = None
         self._redis_address = redis_address
         self._queue = queue
+        self._task_library = task_library
         self._stream_key = queue._stream_key
         self._consumer_group_name = queue._consumer_group_name
         self._consumer_name = consumer_name
@@ -34,7 +35,9 @@ class Worker:
 
     async def run(self):
         await self._process_pending_messages()
+        await self._process_messages()
 
+    async def _process_messages(self):
         while True:
             if self._stop:
                 self.disconnect()
@@ -48,9 +51,9 @@ class Worker:
                 count=1,
             )
 
-            logger.debug('Received message "%s"' % message)
-
             message_id, task, args, kwargs = self._parse_message(message)
+            logger.debug('Received message "%s"' % message_id)
+
             result = await self._execute(task, args, kwargs)
             await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
 
@@ -61,7 +64,7 @@ class Worker:
                 self._consumer_group_name,
                 start='-',
                 stop='+',
-                count='10',  # we must to limit count
+                count=1,  # TODO think about it
                 consumer=self._consumer_name,
             )
 
@@ -76,9 +79,10 @@ class Worker:
                     self.disconnect()
                     sys.exit()
 
-                logger.debug('Received pending message "%s"' % message)
                 message_id, task, args, kwargs = self._parse_pending_message(message)
-                await self._execute(task, args, kwargs)
+                logger.debug('Received pending message "%s"' % message_id)
+
+                result = await self._execute(task, args, kwargs)
                 await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
 
     async def _execute(self, task, args, kwargs):
@@ -90,10 +94,10 @@ class Worker:
 
     def _parse_message(self, message):
         message_id, task = message[0][1], message[0][2][b'message']
-        task, args, kwargs = self._queue._deserialize_task(task)
+        task, args, kwargs = self._task_library.deserialize_task(task)
         return message_id, task, args, kwargs
 
     def _parse_pending_message(self, message):
         message_id, task = message[0], message[1][b'message']
-        task, args, kwargs = self._queue._deserialize_task(task)
+        task, args, kwargs = self._task_library.deserialize_task(task)
         return message_id, task, args, kwargs
