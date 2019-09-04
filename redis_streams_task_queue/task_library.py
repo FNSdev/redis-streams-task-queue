@@ -26,10 +26,12 @@ class TaskLibrary:
             for queue in self._queues:
                 message_id = await queue.send_message(message)
 
-                logger.debug('Sending message "%s" in a queue "%s"' % (message, queue))
+                # logger.debug('Sending message "%s" in a queue "%s"' % (message, queue))
 
         return wrapper
 
+    # TODO do not dump
+    # TODO try to convert types like datetime to str if possible
     def serialize_task(self, task, *args, **kwargs):
         return json.dumps(
             {

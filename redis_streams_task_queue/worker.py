@@ -4,6 +4,10 @@ import signal
 import sys
 
 import aioredis
+from aioredis.errors import ReplyError
+from aioredis.util import wait_ok
+
+from redis_streams_task_queue.utils import create_consumer_group
 
 logger = logging.getLogger(__name__)
 logger.debug('PID: %s' % os.getpid())
@@ -11,7 +15,7 @@ logger.debug('PID: %s' % os.getpid())
 
 # TODO do something with results (store them in redis, for example)
 class Worker:
-    def __init__(self, redis_address, queue, task_library, consumer_name):
+    def __init__(self, consumer_name, redis_address, stream_key, consumer_group_name, task_library):
         self._stop = False
 
         def on_stop(sig, frame):
@@ -21,15 +25,14 @@ class Worker:
 
         self._client = None
         self._redis_address = redis_address
-        self._queue = queue
         self._task_library = task_library
-        self._stream_key = queue._stream_key
-        self._consumer_group_name = queue._consumer_group_name
+        self._stream_key = stream_key
+        self._consumer_group_name = consumer_group_name
         self._consumer_name = consumer_name
 
     async def connect(self):
         self._client = await aioredis.create_redis(self._redis_address)
-        await self._queue.create_consumer_group(self._client, self._stream_key, self._consumer_group_name)
+        await create_consumer_group(self._client, self._stream_key, self._consumer_group_name)
 
     def disconnect(self):
         self._client.close()
@@ -93,8 +96,7 @@ class Worker:
     async def _process_task(self, message_id, task, args, kwargs):
         result = await self._execute(task, args, kwargs)
         await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
-
-        # TODO delete message from stream
+        await self.delete_processed_message(message_id)
 
     async def _execute(self, task, args, kwargs):
         result = await task(*args, **kwargs)
@@ -112,3 +114,18 @@ class Worker:
         message_id, task = message[0], message[1][b'message']
         task, args, kwargs = self._task_library.deserialize_task(task)
         return message_id, task, args, kwargs
+
+    # TODO is it ok to have this method in Worker class or is it better to have smth like self._queue
+    # The problem with self._queue is that we can potentially process messages from different queues later.
+    # So we will have to store queues in dict, for example
+    async def delete_processed_message(self, message_id):
+        try:
+            fut = self._client.execute(
+                b'XDEL',
+                self._stream_key,
+                message_id
+            )
+            await wait_ok(fut)
+        except ReplyError as e:
+            logger.exception(e)
+            raise e

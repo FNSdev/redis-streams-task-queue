@@ -10,24 +10,29 @@ queue = Queue(redis_address=url, stream_key='events', consumer_group_name='event
 task_library = TaskLibrary()
 
 
+args = [
+
+]
+
+kwargs = {
+
+}
+
+for i in range(1000):
+    args.append('a very very very long string')
+    kwargs[i] = 'a very very very very very very very long string'
+
+
 @task_library.task
-async def add(a, b):
-    # Imitates long processing
-    await asyncio.sleep(random.randint(5, 10))
-    s = a + b
-    print(s)
-    return s
+async def some_task(args, kwargs):
+    await asyncio.sleep(0.05)
 
 
 async def main():
     task_library.register_queue(queue)
     await queue.connect()
-    while True:
-        a = random.randint(1, 100)
-        b = random.randint(1, 100)
-        await add(a, b)
-        await asyncio.sleep(1)
-
+    for _ in range(10_000_000):
+        await some_task(args, kwargs)
 
 if __name__ == '__main__':
     asyncio.run(main())
