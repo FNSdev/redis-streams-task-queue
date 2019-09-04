@@ -29,6 +29,7 @@ class Worker:
 
     async def connect(self):
         self._client = await aioredis.create_redis(self._redis_address)
+        await self._queue.create_consumer_group(self._client, self._stream_key, self._consumer_group_name)
 
     def disconnect(self):
         self._client.close()
@@ -54,17 +55,22 @@ class Worker:
             message_id, task, args, kwargs = self._parse_message(message)
             logger.debug('Received message "%s"' % message_id)
 
-            result = await self._execute(task, args, kwargs)
-            await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
+            await self._process_task(message_id, task, args, kwargs)
 
     async def _process_pending_messages(self):
+        """
+        In our case, only one message can be pending for each worker at the same time.
+        If worker hasn`t acknowledged a message, it won`t receive new messages, until pending message will be
+        processed and acknowledged by this worker.
+        """
+
         while True:
             messages = await self._client.xpending(
                 self._stream_key,
                 self._consumer_group_name,
                 start='-',
                 stop='+',
-                count=1,  # TODO think about it
+                count=1,
                 consumer=self._consumer_name,
             )
 
@@ -82,8 +88,13 @@ class Worker:
                 message_id, task, args, kwargs = self._parse_pending_message(message)
                 logger.debug('Received pending message "%s"' % message_id)
 
-                result = await self._execute(task, args, kwargs)
-                await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
+                await self._process_task(message_id, task, args, kwargs)
+
+    async def _process_task(self, message_id, task, args, kwargs):
+        result = await self._execute(task, args, kwargs)
+        await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
+
+        # TODO delete message from stream
 
     async def _execute(self, task, args, kwargs):
         result = await task(*args, **kwargs)

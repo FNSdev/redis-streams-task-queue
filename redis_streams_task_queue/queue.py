@@ -1,12 +1,8 @@
 import logging
-import json
-from functools import wraps
 
 import aioredis
 from aioredis.errors import ReplyError
 from aioredis.util import wait_ok
-
-from redis_streams_task_queue.exceptions import TaskDoesNotExistException
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +19,18 @@ class Queue:
 
     async def connect(self):
         self._client = await aioredis.create_redis(self._redis_address)
-        await self._create_consumer_group()
+        await self.create_consumer_group(self._client, self._stream_key, self._consumer_group_name)
 
     def disconnect(self):
         self._client.close()
 
-    async def _create_consumer_group(self):
+    async def create_consumer_group(self, redis_client, stream_key, consumer_group_name):
         try:
-            fut = self._client.execute(
+            fut = redis_client.execute(
                 b'XGROUP',
                 b'CREATE',
-                self._stream_key,
-                self._consumer_group_name,
+                stream_key,
+                consumer_group_name,
                 b'$',
                 b'MKSTREAM',
             )
