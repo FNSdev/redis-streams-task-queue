@@ -1,5 +1,4 @@
 import asyncio
-import random
 
 from redis_streams_task_queue.task_library import TaskLibrary
 from redis_streams_task_queue.queue import Queue
@@ -18,20 +17,20 @@ kwargs = {
 
 }
 
-for i in range(1000):
+for i in range(100):
     args.append('a very very very long string')
     kwargs[i] = 'a very very very very very very very long string'
 
 
 @task_library.task
 async def some_task(args, kwargs):
-    await asyncio.sleep(0.05)
+    pass
 
 
 async def main():
     task_library.register_queue(queue)
     await queue.connect()
-    for _ in range(10_000_000):
+    for _ in range(1_000_000):
         await some_task(args, kwargs)
 
 if __name__ == '__main__':
