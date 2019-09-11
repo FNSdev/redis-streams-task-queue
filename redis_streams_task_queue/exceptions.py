@@ -10,3 +10,7 @@ class TaskDoesNotExistException(BaseTaskQueueException):
 
 class QueueIsAlreadyRegisteredException(BaseTaskQueueException):
     pass
+
+
+class TaskIsAlreadyRegisteredException(BaseTaskQueueException):
+    pass

@@ -2,7 +2,9 @@ import json
 import logging
 from functools import wraps
 
-from redis_streams_task_queue.exceptions import TaskDoesNotExistException, QueueIsAlreadyRegisteredException
+from redis_streams_task_queue.exceptions import (
+    TaskDoesNotExistException, QueueIsAlreadyRegisteredException, TaskIsAlreadyRegisteredException
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,13 @@ class TaskLibrary:
             raise QueueIsAlreadyRegisteredException(f'Queue with name {queue} is already registered')
         self._queues.append(queue)
 
-    def task(self, func):
+    def _register_task(self, func):
+        if func.__name__ in self._tasks.keys():
+            raise TaskIsAlreadyRegisteredException(f'Task with name {func.__name__} is already registered')
         self._tasks[func.__name__] = func
+
+    def task(self, func):
+        self._register_task(func)
 
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -26,7 +33,7 @@ class TaskLibrary:
             for queue in self._queues:
                 message_id = await queue.send_message(message)
 
-                # logger.debug('Sending message "%s" in a queue "%s"' % (message, queue))
+                logger.debug('Sending message "%s" in a queue "%s"' % (message_id, queue))
 
         return wrapper
 

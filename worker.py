@@ -1,7 +1,7 @@
 import asyncio
 import sys
 
-from stress_test import task_library
+from main import task_library
 from redis_streams_task_queue.worker import Worker
 
 url = 'redis://127.0.0.1:6380'
@@ -15,7 +15,7 @@ worker = Worker(
 
 
 async def main():
-    await worker.connect()
+    await worker.startup()
     await worker.run()
 
 

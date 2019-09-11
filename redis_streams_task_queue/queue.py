@@ -25,7 +25,7 @@ class Queue:
         self._client.close()
 
     async def send_message(self, message):
-        await self._client.xadd(self._stream_key, {'message': message})
+        return await self._client.xadd(self._stream_key, {'message': message})
 
     def __str__(self):
         return f'{self._stream_key}-{hash(self)}'

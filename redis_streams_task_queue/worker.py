@@ -30,12 +30,13 @@ class Worker:
         self._consumer_group_name = consumer_group_name
         self._consumer_name = consumer_name
 
-    async def connect(self):
+    async def shutdown(self):
+        self._client.close()
+        sys.exit()
+
+    async def startup(self):
         self._client = await aioredis.create_redis(self._redis_address)
         await create_consumer_group(self._client, self._stream_key, self._consumer_group_name)
-
-    def disconnect(self):
-        self._client.close()
 
     async def run(self):
         await self._process_pending_messages()
@@ -44,8 +45,7 @@ class Worker:
     async def _process_messages(self):
         while True:
             if self._stop:
-                self.disconnect()
-                sys.exit()
+                await self.shutdown()
 
             message = await self._client.xread_group(
                 self._consumer_group_name,
@@ -85,8 +85,7 @@ class Worker:
 
             for message in messages:
                 if self._stop:
-                    self.disconnect()
-                    sys.exit()
+                    await self.shutdown()
 
                 message_id, task, args, kwargs = self._parse_pending_message(message)
                 logger.debug('Received pending message "%s"' % message_id)
@@ -94,16 +93,10 @@ class Worker:
                 await self._process_task(message_id, task, args, kwargs)
 
     async def _process_task(self, message_id, task, args, kwargs):
-        result = await self._execute(task, args, kwargs)
+        result = await task(*args, **kwargs)
         await self._client.xack(self._stream_key, self._consumer_group_name, message_id)
         await self.delete_processed_message(message_id)
-
-    async def _execute(self, task, args, kwargs):
-        result = await task(*args, **kwargs)
-
-        logger.debug('Task "%s" with args "%s" and kwargs "%s" was executed' % (task, args, kwargs))
-
-        return result
+        logger.debug('Task "%s" with id "%s" was executed' % (task, message_id))
 
     def _parse_message(self, message):
         message_id, task = message[0][1], message[0][2][b'message']
